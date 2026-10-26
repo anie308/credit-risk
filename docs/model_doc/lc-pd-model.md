@@ -15,7 +15,7 @@ status: Model LC-PD-01, version 1.0. Self-review in the format of an independent
 | Data | Lending Club accepted loans 2007–2018Q4 (public), 36-month loans issued to Dec 2015 |
 | Development sample | Issued Oct 2012 – Dec 2013: 115,603 loans, 12.4% default rate |
 | Out-of-time samples | 2014 (162,570 loans) and 2015 (282,787 loans) |
-| Code | `credit-risk/` repository, package `lcrisk`; `lcrisk reproduce` rebuilds every number and figure here from the raw file |
+| Code | [github.com/anie308/credit-risk](https://github.com/anie308/credit-risk), package `lcrisk`; `lcrisk reproduce` rebuilds every number and figure here from the raw file |
 | Review status | The author built and reviewed the model. This report follows the structure of an independent validation, but it is not independent, and a real deployment would need one. |
 
 ## 1. Executive summary

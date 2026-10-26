@@ -5,6 +5,11 @@
 A retail probability-of-default model built and validated the way a bank's model risk team would
 review it, on Lending Club's public loan book (36-month loans, 2007–2015 vintages).
 
+- Model documentation, in the format of a validation report:
+  [reports/model_doc/lc-pd-model.pdf](reports/model_doc/lc-pd-model.pdf)
+- Plain-English write-up:
+  [I built a bank-style credit model. The health check said it was fine while losses rose](https://jurstadev.xyz/articles/credit-risk-model/)
+
 ## Quickstart
 
 ```bash
@@ -14,7 +19,15 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Put `accepted_2007_to_2018Q4.csv` in `data/raw/` (see `data/SOURCES.md`), then:
+Download the data (1.7 GB; source and checksum in `data/SOURCES.md`):
+
+```bash
+mkdir -p data/raw
+curl -L -o data/raw/accepted_2007_to_2018Q4.csv   https://huggingface.co/datasets/codesignal/lending-club-loan-accepted/resolve/main/accepted_2007_to_2018Q4.csv
+sha256sum data/raw/accepted_2007_to_2018Q4.csv   # 3eae03c2...0933d1f36a
+```
+
+Then:
 
 ```bash
 lcrisk reproduce   # everything below, ~6 minutes
