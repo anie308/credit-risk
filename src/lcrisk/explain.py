@@ -29,26 +29,72 @@ def importance(card, gbm, sample: pd.DataFrame) -> pd.DataFrame:
     return t.sort_values("lightgbm", ascending=False).rename_axis("feature").reset_index()
 
 
+# Reason-code families: overlapping bureau fields that describe the same thing to an applicant.
+# A declined applicant is told "too many recent credit applications", not which of four
+# correlated fields carried the weight.
+FAMILIES = {
+    "Credit score": ["fico"],
+    "Income and affordability": ["annual_inc", "loan_to_income", "dti", "revol_to_income",
+                                 "loan_amnt"],
+    "Credit limits and balances": ["tot_hi_cred_lim", "bc_open_to_buy", "total_bc_limit",
+                                   "total_rev_hi_lim", "tot_cur_bal", "avg_cur_bal",
+                                   "total_bal_ex_mort", "revol_bal"],
+    "Credit card utilisation": ["revol_util", "bc_util", "percent_bc_gt_75"],
+    "Recent credit seeking": ["acc_open_past_24mths", "num_tl_op_past_12m", "inq_last_6mths",
+                              "mths_since_recent_inq"],
+    "Length and depth of credit history": ["mo_sin_old_rev_tl_op", "credit_hist_months",
+                                           "total_acc", "open_acc", "num_actv_rev_tl",
+                                           "mort_acc"],
+    "Delinquencies and public records": ["delinq_2yrs", "mths_since_last_delinq",
+                                         "mths_since_last_record", "pub_rec",
+                                         "pub_rec_bankruptcies", "tax_liens",
+                                         "collections_12_mths_ex_med", "acc_now_delinq",
+                                         "pct_tl_nvr_dlq"],
+    "Application details": ["purpose", "home_ownership", "verification_status",
+                            "emp_length_yrs"],
+}
+FAMILY_OF = {f: fam for fam, feats in FAMILIES.items() for f in feats}
+
+
+def _agreement(sc: pd.DataFrame, gbm: pd.DataFrame) -> dict:
+    """Top-1 agreement and scorecard top-1 inside LightGBM top-3, on per-loan reason scores."""
+    sc_top, gbm_top = sc.idxmax(axis=1), gbm.idxmax(axis=1)
+    gbm_top3 = gbm.apply(lambda r: set(r.nlargest(3).index), axis=1)
+    return {"same_top": float((sc_top == gbm_top).mean()),
+            "scorecard_top_in_lgbm_top3": float(pd.Series(
+                [a in b for a, b in zip(sc_top, gbm_top3, strict=True)]).mean()),
+            "lgbm_top": gbm_top, "sc_top": sc_top}
+
+
 def reason_codes(card, gbm, sample: pd.DataFrame) -> dict:
-    """How often both models give the same top adverse-action reason for a declined loan.
+    """How often both models give the same top adverse-action reason for a declined loan,
+    feature by feature and grouped into reason-code families.
 
     The scorecard's reasons are the features that cost the applicant the most points against
-    the best bin; LightGBM's are the largest positive SHAP contributions.
+    the best bin; LightGBM's are the largest positive SHAP contributions. Family scores sum
+    the members' contributions.
     """
     W = woe.woe_frame(sample, {f: card.binners[f] for f in card.features})
     beta = card.result.params[card.features]
     best = pd.Series({f: card.binners[f].table["woe"].max() for f in card.features})
     # Log-odds penalty vs the best bin (beta < 0, so lower WoE adds risk)
     penalty = (W - best) * beta
-    sc_top = penalty.idxmax(axis=1)
     contrib = gbm.contributions(sample).drop(columns="base")
-    gbm_top = contrib.idxmax(axis=1)
-    gbm_top3 = contrib.apply(lambda r: set(r.nlargest(3).index), axis=1)
+    unmapped = set(contrib.columns) - set(FAMILY_OF)
+    assert not unmapped, f"features without a reason-code family: {unmapped}"
+    by_feature = _agreement(penalty, contrib)
+    by_family = _agreement(penalty.T.groupby(FAMILY_OF).sum().T,
+                           contrib.T.groupby(FAMILY_OF).sum().T)
+    sc_families = {FAMILY_OF[f] for f in card.features}
     return {"loans": len(sample),
-            "same_top_reason": float((sc_top == gbm_top).mean()),
-            "scorecard_top_in_lgbm_top3": float(pd.Series(
-                [a in b for a, b in zip(sc_top, gbm_top3, strict=True)]).mean()),
-            "lgbm_top_not_in_scorecard": float((~gbm_top.isin(card.features)).mean())}
+            "same_top_reason": by_feature["same_top"],
+            "scorecard_top_in_lgbm_top3": by_feature["scorecard_top_in_lgbm_top3"],
+            "lgbm_top_not_in_scorecard": float((~by_feature["lgbm_top"].isin(card.features))
+                                               .mean()),
+            "same_top_family": by_family["same_top"],
+            "scorecard_top_family_in_lgbm_top3": by_family["scorecard_top_in_lgbm_top3"],
+            "lgbm_top_family_not_in_scorecard": float(
+                (~by_family["lgbm_top"].isin(sc_families)).mean())}
 
 
 def cutoff_value(scored: pd.DataFrame, sample: str = "oot_2015",

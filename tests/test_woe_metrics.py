@@ -91,7 +91,10 @@ def test_calibration_tests_flag_underestimate(synthetic):
     grade = pd.qcut(pd_true, 5, labels=False)
     good = metrics.calibration_by_grade(y, pd_true, grade)
     assert (good["binomial_p"] > 0.001).all()
+    assert ((good["obs_pred_lo"] < 1) & (good["obs_pred_hi"] > 1)).sum() >= 4
     bad = metrics.calibration_by_grade(y, pd_true * 0.5, grade)
     assert (bad["jeffreys_p"] < 0.01).sum() >= 3
+    # Halving the PD roughly doubles observed / predicted
+    assert bad["obs_pred"].between(1.6, 2.4).all()
     _, p_ok = metrics.hosmer_lemeshow(y, pd_true)
     assert p_ok > 0.01

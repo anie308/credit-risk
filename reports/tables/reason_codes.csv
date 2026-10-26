@@ -1,2 +1,2 @@
-loans,same_top_reason,scorecard_top_in_lgbm_top3,lgbm_top_not_in_scorecard
-10000,0.288,0.7619,0.1512
+loans,same_top_reason,scorecard_top_in_lgbm_top3,lgbm_top_not_in_scorecard,same_top_family,scorecard_top_family_in_lgbm_top3,lgbm_top_family_not_in_scorecard
+10000,0.288,0.7619,0.1512,0.7451,0.9323,0.0475

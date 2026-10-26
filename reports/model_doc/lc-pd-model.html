@@ -87,21 +87,34 @@ the development window it is well calibrated (Hosmer–Lemeshow p = 0.65; no mas
 rejected).</p>
 <p>Out of time, calibration fails. Default rates rose inside every Lending Club grade after 2013,
 and the model under-predicts the 2015 vintage by two percentage points (mean PD 12.9%,
-observed 14.9%); the Jeffreys test rejects the PD of seven of eight grades. The population
-stability index never left green (score PSI ≤ 0.026 in every quarter), so <strong>standard
-population monitoring would not have caught this.</strong> The applicants looked the same on paper
-and defaulted more often. Recalibrating the intercept on 2014 outcomes, as an annual
-review would have done, closes only a third of the 2015 gap, because conditions kept
-deteriorating.</p>
+observed 14.9%); the Jeffreys test rejects the PD of seven of eight grades. With samples this
+large the test rejects small misses too, so the size matters more: in 2014 observed defaults
+ran 5–10% above prediction in the rejected grades, in 2015 9–21%, which is material. The
+population stability index never left green (score PSI ≤ 0.026 in every quarter), so
+<strong>standard population monitoring would not have caught this.</strong> The applicants looked the same
+on paper and defaulted more often. This was not a macroeconomic downturn: US unemployment fell
+from 7.4% in 2013 to 5.3% in 2015 (BLS annual averages). The evidence points to drift in Lending Club's own credit supply as it
+tripled its lending in two years: lighter income verification, and borrowers taking on new
+accounts that left no enquiry trail. Recalibrating the intercept on 2014 outcomes, as an
+annual review would have done, closes only a third of the 2015 gap, because the book kept
+changing.</p>
 <p>The LightGBM challenger adds about four Gini points in every sample (0.352 / 0.354 / 0.363).
 At a 20% decline rate on the 2015 book that is 628 more defaults avoided, roughly $4 million
-of loss on $3.6 billion lent. Its top decline reason agrees with the scorecard's only 29% of
-the time.</p>
+of loss on $3.6 billion lent. Its top decline reason matches the scorecard's only 29% of the
+time feature by feature, but 75% of the time once overlapping bureau fields are grouped into
+reason families, so a workable reason-code framework is within reach.</p>
+<p>The crisis stress is sensitive to how the crisis is measured. Anchored on Lending Club's
+sub-grades, a 2007–09 repeat raises 2015 lifetime expected loss from 6.6% to 8.1%; anchored on
+FICO and debt-to-income, whose meaning did not change over time, to 11.4%. Lending Club graded
+more harshly in its early years, so the sub-grade anchor understates the crisis.</p>
+<p>Fair-lending risk could not be tested: the data hold no protected attributes and no names or
+full addresses, so neither a direct disparate-impact test nor a proxy method is possible.</p>
 <p><strong>Opinion: approve the scorecard as champion, with conditions.</strong> (1) Recalibrate before use
 and on monitoring triggers, not on a fixed annual cycle. (2) Add an early-delinquency
-backtest to monitoring, because the 36-month outcome arrives too late to steer by. (3) Keep
-LightGBM as a challenger and benchmark until a governed reason-code framework exists for it.
-The findings log is in Section 10.</p>
+backtest to monitoring, because the 36-month outcome arrives too late to steer by. (3) Run a
+disparate-impact test on the deploying lender's data before use. (4) Plan capital on the
+FICO-anchored stress, the more severe of the two. (5) Keep LightGBM as challenger until a
+family-based reason-code framework is approved. The findings log is in Section 10.</p>
 <table>
 <thead>
 <tr>
@@ -216,6 +229,15 @@ purpose:</p>
   proxy for protected characteristics; it is left out rather than tested and defended.</li>
 <li><strong>Free text</strong> (job title, loan description). It would need its own review.</li>
 </ul>
+<p><strong>Fair lending.</strong> Leaving out geography is only half of a fair-lending review. The other half
+is a disparate-impact test: comparing approval rates at the cut-off across protected groups
+and searching for a less discriminatory alternative model. That cannot be done on this data.
+It holds no race, sex or age, and no names or full addresses, so the standard proxy method
+(Bayesian Improved Surname Geocoding, which combines surname with census geography) is
+unavailable. A geography-only proxy from three-digit zip codes would be far too coarse to rely
+on. The champion's ten features are standard bureau and affordability measures. The
+challenger also uses home ownership and loan purpose, which a fair-lending review would
+examine. The test has to be run on the deploying lender's own data before use (finding F10).</p>
 <p>Five features are derived: credit history length at application, employment length in years,
 the FICO band midpoint, and two affordability ratios, loan amount and revolving balance to
 annual income.</p>
@@ -454,6 +476,74 @@ the shape of the curve is right but its level is wrong.</p>
 </table>
 <p><img alt="Master scale" src="figures/fig5_master_scale.png" /></p>
 <p><em>Figure 5. Scorecard master scale on 2015 loans. Only R1 passes.</em></p>
+<p>The tests say <em>whether</em> a grade is miscalibrated, and with 9,000–63,000 loans per grade they
+reject very small gaps. The ratio of observed to predicted default rate says <em>by how much</em>.
+Intervals are 95% Jeffreys intervals on the observed rate; † marks grades the Jeffreys test
+does not reject at 1%.</p>
+<table>
+<thead>
+<tr>
+<th>Grade</th>
+<th>Mean PD</th>
+<th>2014: observed ÷ predicted (95%)</th>
+<th>2015: observed ÷ predicted (95%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td>3.1%</td>
+<td>1.05 (0.92–1.18) †</td>
+<td>0.94 (0.86–1.03) †</td>
+</tr>
+<tr>
+<td>R2</td>
+<td>5.1%</td>
+<td>1.05 (0.98–1.12) †</td>
+<td>1.11 (1.06–1.17)</td>
+</tr>
+<tr>
+<td>R3</td>
+<td>7.0%</td>
+<td>1.10 (1.04–1.15)</td>
+<td>1.21 (1.16–1.25)</td>
+</tr>
+<tr>
+<td>R4</td>
+<td>9.5%</td>
+<td>1.08 (1.05–1.12)</td>
+<td>1.17 (1.14–1.20)</td>
+</tr>
+<tr>
+<td>R5</td>
+<td>12.9%</td>
+<td>1.06 (1.04–1.09)</td>
+<td>1.18 (1.16–1.20)</td>
+</tr>
+<tr>
+<td>R6</td>
+<td>17.3%</td>
+<td>1.05 (1.03–1.08)</td>
+<td>1.17 (1.15–1.19)</td>
+</tr>
+<tr>
+<td>R7</td>
+<td>22.8%</td>
+<td>1.05 (1.02–1.07)</td>
+<td>1.14 (1.12–1.16)</td>
+</tr>
+<tr>
+<td>R8</td>
+<td>30.5%</td>
+<td>1.02 (0.98–1.07) †</td>
+<td>1.09 (1.06–1.13)</td>
+</tr>
+</tbody>
+</table>
+<p>In 2014 the rejected grades are 5–10% short. That is statistically clear but small, and
+inside the range many banks tolerate before recalibrating. In 2015 they are 9–21% short,
+concentrated in the middle of the scale where most of the book sits: material by any
+standard. The monitoring triggers in Section 9 use this ratio, not the test alone.</p>
 <h3 id="63-stability-and-what-it-missed">6.3 Stability, and what it missed</h3>
 <p><img alt="Drift and PSI" src="figures/fig3_drift_psi.png" /></p>
 <p><em>Figure 3. Mean predicted PD against observed default rate by issue quarter (top), and the
@@ -465,9 +555,29 @@ feature is not in the scorecard (IV 0.003), and it contributes 1.8% of LightGBM'
 explanatory weight.</p>
 <p>This is the central validation finding. The distribution of applicants barely moved, but the
 default rate given those characteristics did. That kind of drift is invisible to PSI by
-construction. Plausible causes are a looser macro-credit environment and adverse selection
-as competition for prime borrowers grew. Neither is observable in the application data.
-Monitoring that relies on PSI would have reported a healthy model throughout 2014–2015.</p>
+construction. Monitoring that relies on PSI would have reported a healthy model throughout
+2014–2015.</p>
+<p>The drift is better described as a change in Lending Club's credit supply and in who it
+selected than as a change in economic conditions. US unemployment fell from 7.4% in 2013 to 6.2% in
+2014 and 5.3% in 2015 (BLS annual averages), while the evidence points to the platform itself:</p>
+<ul>
+<li><strong>Growth.</strong> Lending Club's issuance across all terms went from $2.0 billion (134,814 loans)
+  in 2013 to $3.5 billion in 2014 and $6.4 billion (421,095 loans) in 2015.</li>
+<li><strong>Lighter verification.</strong> Among 36-month loans, full income verification fell from 41% of
+  loans in 2013 to 28% in 2015, while the lighter "source verified" check rose from 21% to 42%.
+  This is the one feature that moved enough to turn amber.</li>
+<li><strong>New credit without an enquiry trail.</strong> Accounts opened in the past 24 months rose from
+  3.9 to 4.6 on average between 2013 and 2015. Over the same period, the share of applicants
+  with no credit enquiry in the past six months rose from 52% to 61%. Applicants were taking
+  on new credit that did not show up as enquiries: other online lenders' soft-pull checks, or
+  loans stacked across platforms faster than the bureaus recorded them. The scorecard rewards
+  an empty enquiry record (Section 4.2), so this would erode exactly that signal. The data
+  are consistent with this explanation but cannot prove it.</li>
+<li><strong>Leverage.</strong> Mean debt-to-income rose from 16.8 to 18.5.</li>
+</ul>
+<p>Leverage and new accounts are in the model, so their shifts are priced in. The residual
+drift is what the application data could not see. That is why the remedy is outcome-based
+monitoring rather than better population checks.</p>
 <h3 id="64-benchmarking-against-lending-clubs-own-grade">6.4 Benchmarking against Lending Club's own grade</h3>
 <p>Lending Club's sub-grade is a natural benchmark: it is the lender's own risk ranking, built
 with information this model does not have (the full bureau report, internal fraud and
@@ -507,7 +617,8 @@ applied to the next (2015), as a bank would at an annual review.</p>
 </tbody>
 </table>
 <p>The recalibration helps but lags: 2015 was worse than 2014. A one-year-old recalibration is
-not enough when conditions are moving, so the monitoring plan (Section 9) uses triggers.</p>
+not enough when the book is changing this fast, so the monitoring plan (Section 9) uses
+triggers.</p>
 <h3 id="66-champion-versus-challenger">6.6 Champion versus challenger</h3>
 <table>
 <thead>
@@ -544,20 +655,35 @@ not enough when conditions are moving, so the monitoring plan (Section 9) uses t
 <td>TreeSHAP; per loan</td>
 </tr>
 <tr>
-<td>Same top decline reason as scorecard</td>
+<td>Same top decline reason as scorecard, by feature</td>
 <td></td>
 <td>29% (76% within its top three)</td>
+</tr>
+<tr>
+<td>Same top decline reason as scorecard, by reason family</td>
+<td></td>
+<td>75% (93% within its top three)</td>
 </tr>
 </tbody>
 </table>
 <p>At the average realised loss per 2015 default (about $6,500), LightGBM's extra 628 avoided
-defaults are worth about $4.1 million, 0.11% of the $3.6 billion lent. That is material. Against
-it, LightGBM's top decline reason is a feature the scorecard does not use 15% of the time,
-which would need a new adverse-action reason framework. It also spreads weight across many
-correlated bureau fields (Appendix B), so any single explanation is less stable. The
-recommendation is to keep the scorecard as champion and run LightGBM alongside it as a
-challenger and early-warning benchmark. If the gap persists over two further vintages and a
-reason-code framework is approved, LightGBM should be promoted.</p>
+defaults are worth about $4.1 million, 0.11% of the $3.6 billion lent. That is material.</p>
+<p>Against it is explanation. Measured feature by feature, LightGBM's top decline reason
+matches the scorecard's only 29% of the time, and 15% of the time it is a feature the
+scorecard does not use. Much of that disagreement is an artefact. LightGBM spreads weight
+across overlapping bureau fields (Appendix B): total credit limit, bankcard limit and
+revolving limit all say much the same thing. An applicant would never be told which of
+those carried the weight. A declined applicant is told "limited available credit".</p>
+<p>Grouping both models' attributions into eight reason families settles this. The families
+are credit score; income and affordability; credit limits and balances; card utilisation;
+recent credit seeking; length and depth of history; delinquencies and public records; and
+application details (<code>explain.FAMILIES</code>). Agreement on the top reason rises to 75%. The
+scorecard's top family is in LightGBM's top three 93% of the time, and LightGBM's top family
+lies outside the scorecard's families only 5% of the time.</p>
+<p>The recommendation stays: keep the scorecard as champion and run LightGBM alongside it as a
+challenger and early-warning benchmark. The obstacle to promotion is now governance rather
+than feasibility. Adopt the family-based reason codes, then promote LightGBM if the Gini gap
+persists over two further vintages.</p>
 <h2 id="7-risk-parameters-and-expected-loss">7. Risk parameters and expected loss</h2>
 <p>Expected loss is PD × LGD × EAD per loan. LGD, EAD and default timing are estimated per
 master-scale grade on development-window defaults, whose recovery workouts were complete
@@ -611,12 +737,77 @@ by the data snapshot.</p>
 themselves held up. One caution runs the other way: recoveries on late 2015 defaults may not
 have been fully booked at the snapshot, which would overstate realised loss slightly.</p>
 <h2 id="8-stress-testing-and-capital">8. Stress testing and capital</h2>
-<p><strong>Downturn calibration.</strong> Each 2007–2009 loan is given its sub-grade's development-window
-default rate as a PD. Those PDs average 14.2%; the crisis vintages actually defaulted at 16.5%
-(8,235 loans). Holding the sub-grade fixed removes the change in borrower mix and leaves the
-downturn itself, a shift of <strong>+0.19 on the log-odds scale</strong>. Crisis-vintage LGD was 5.4%
-higher than in the development window, which gives the downturn LGD factor. This is an
-approximate severity: Lending Club re-calibrated its grades over the period.</p>
+<p><strong>Downturn calibration.</strong> Each 2007–2009 loan is matched to a segment and given that
+segment's development-window default rate as a PD. The log-odds shift that lifts the mean of
+those PDs to the crisis vintages' observed default rate is the downturn, with the mix change
+held out. Cells with fewer than 50 development loans are not used. Crisis-vintage LGD was
+5.4% higher than in the development window, which gives the downturn LGD factor.</p>
+<p>Everything rests on the segment meaning the same thing in both periods. Lending Club's grades
+fail that test. Figure 1 shows what a grade meant shifting even within 2012–2015. The
+2007–09 book was small (about 8,000 matched loans) and came from a platform in its first
+years, grading on a different model. So the shift is computed four ways, two on Lending
+Club's grades and two on measures whose definition did not change:</p>
+<table>
+<thead>
+<tr>
+<th>Anchor</th>
+<th>Crisis loans matched</th>
+<th>PD at development rates</th>
+<th>Observed</th>
+<th>Shift (log-odds)</th>
+<th>2015 mean PD, stressed</th>
+<th>2015 lifetime EL, downturn PD and LGD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LC sub-grade</td>
+<td>8,063 (97%)</td>
+<td>13.9%</td>
+<td>16.1%</td>
+<td>+0.18</td>
+<td>15.7%</td>
+<td>$294.2m (8.1%)</td>
+</tr>
+<tr>
+<td>LC grade</td>
+<td>8,101 (98%)</td>
+<td>13.7%</td>
+<td>16.2%</td>
+<td>+0.21</td>
+<td>16.1%</td>
+<td>$302.6m (8.4%)</td>
+</tr>
+<tr>
+<td>FICO band (20 points)</td>
+<td>7,788 (94%)</td>
+<td>10.5%</td>
+<td>15.7%</td>
+<td>+0.48</td>
+<td>19.9%</td>
+<td>$384.1m (10.6%)</td>
+</tr>
+<tr>
+<td>FICO band × DTI quintile</td>
+<td>7,788 (94%)</td>
+<td>9.7%</td>
+<td>15.7%</td>
+<td>+0.56</td>
+<td>21.2%</td>
+<td>$412.3m (11.4%)</td>
+</tr>
+</tbody>
+</table>
+<p>The anchors disagree by a factor of three. At a given FICO score, crisis-era loans sat in
+worse Lending Club sub-grades than the same score earned in 2012–13: at FICO 700–719 the
+average sub-grade was three notches worse (rank 10.3 against 7.3, where A1 = 0), and the gap
+holds in every band. Lending Club graded more
+harshly then, so the grade anchor assigns them PDs that are too high, which makes the
+crisis look milder than it was. The FICO-based anchors have the opposite weakness: they
+ignore everything else that may have differed about early borrowers, and only 94% of crisis
+loans fall in FICO bands the development window covers. The truth is likely between the two.
+For capital planning the conservative end should be used (finding F8). A macro-linked
+version, with default rates tied to unemployment and rates, is the proper cross-check.</p>
 <table>
 <thead>
 <tr>
@@ -636,18 +827,25 @@ approximate severity: Lending Club re-calibrated its grades over the period.</p>
 <td>6.56%</td>
 </tr>
 <tr>
-<td>Downturn PD</td>
-<td>15.9%</td>
+<td>Downturn PD, sub-grade anchor</td>
+<td>15.7%</td>
 <td>0.886</td>
-<td>$282.3m</td>
-<td>7.80%</td>
+<td>$279.2m</td>
+<td>7.71%</td>
 </tr>
 <tr>
-<td>Downturn PD and LGD</td>
-<td>15.9%</td>
+<td>Downturn PD and LGD, sub-grade anchor</td>
+<td>15.7%</td>
 <td>0.934</td>
-<td>$297.4m</td>
-<td>8.21%</td>
+<td>$294.2m</td>
+<td>8.12%</td>
+</tr>
+<tr>
+<td>Downturn PD and LGD, FICO × DTI anchor</td>
+<td>21.2%</td>
+<td></td>
+<td>$412.3m</td>
+<td>11.39%</td>
 </tr>
 <tr>
 <td><em>Realised</em></td>
@@ -658,9 +856,10 @@ approximate severity: Lending Club re-calibrated its grades over the period.</p>
 </tr>
 </tbody>
 </table>
-<p>The realised 2015 loss rate lies between the baseline and the downturn scenarios. In loss
-terms, the 2015 vintage experienced most of a crisis-calibrated stress, in a year without a
-recession. That is the clearest sign of how far underwriting conditions moved.</p>
+<p>The realised 2015 loss sits about two-thirds of the way from baseline to the sub-grade
+stress, but only a fifth of the way to the FICO × DTI stress. Either way it is not a
+macroeconomic result. The 2015 book lost far more than its baseline in a benign economy
+because of the credit-supply drift in Section 6.3, not a recession.</p>
 <p><strong>Capital.</strong> Basel's single-factor (Vasicek) formula for other retail exposures is applied to
 the one-year PD, with the regulatory asset correlation (3–16%) and downturn LGD. Unexpected
 loss at 99.9% is $373.5m, <strong>10.3% of the amount funded</strong>, on top of one-year expected loss of
@@ -700,10 +899,10 @@ EAD is taken at origination.</p>
 <td>Recalibrate intercept</td>
 </tr>
 <tr>
-<td>Mean PD vs observed default rate, matured cohorts</td>
+<td>Observed ÷ predicted per grade, matured cohorts</td>
 <td>Quarterly</td>
-<td>Jeffreys rejects ≥ 2 grades</td>
-<td>≥ 4 grades</td>
+<td>&gt; 1.10 in ≥ 2 grades, interval excluding 1</td>
+<td>&gt; 1.20 in any grade, or &gt; 1.10 in ≥ 4</td>
 <td>Recalibrate; escalate</td>
 </tr>
 <tr>
@@ -739,7 +938,7 @@ distributional checks would not have flagged the problem in the meantime.</p>
 <tr>
 <td>F1</td>
 <td>High</td>
-<td>PD under-predicts out of time: 2015 mean PD 12.9% vs 14.9% observed; Jeffreys rejects 7 of 8 grades</td>
+<td>PD under-predicts out of time: 2015 mean PD 12.9% vs 14.9% observed; observed ÷ predicted 1.09–1.21 in the 7 of 8 grades Jeffreys rejects</td>
 <td>Recalibrate before use; adopt the trigger-based recalibration in Section 9</td>
 </tr>
 <tr>
@@ -751,7 +950,7 @@ distributional checks would not have flagged the problem in the meantime.</p>
 <tr>
 <td>F3</td>
 <td>Medium</td>
-<td>Annual recalibration lags a deteriorating environment (6 of 8 grades still rejected after the 2014-based fix)</td>
+<td>Annual recalibration lags a fast-changing book (6 of 8 grades still rejected after the 2014-based fix)</td>
 <td>Recalibrate on triggers, not a calendar</td>
 </tr>
 <tr>
@@ -763,8 +962,8 @@ distributional checks would not have flagged the problem in the meantime.</p>
 <tr>
 <td>F5</td>
 <td>Medium</td>
-<td>Challenger outperforms by about 4 Gini points but its decline reasons differ from the champion's</td>
-<td>Build and approve a SHAP-based reason-code framework before any promotion</td>
+<td>Challenger outperforms by about 4 Gini points; its top decline reason matches the champion's 29% of the time by feature, 75% by reason family</td>
+<td>Approve the family-based reason codes (Section 6.6) before any promotion</td>
 </tr>
 <tr>
 <td>F6</td>
@@ -780,15 +979,21 @@ distributional checks would not have flagged the problem in the meantime.</p>
 </tr>
 <tr>
 <td>F8</td>
-<td>Low</td>
-<td>Downturn severity is calibrated through Lending Club sub-grades, which were redefined over time</td>
-<td>Cross-check against an external macro scenario at the next review</td>
+<td>Medium</td>
+<td>Downturn severity depends on the anchor: +0.18 log-odds on LC sub-grades, which were redefined over time, to +0.56 on FICO × DTI; 2015 stressed EL 8.1% to 11.4%</td>
+<td>Plan capital on the FICO × DTI anchor; build a macro-linked stress at the next review</td>
 </tr>
 <tr>
 <td>F9</td>
 <td>Low</td>
 <td>Recoveries on late 2015 defaults may be incomplete at the data snapshot</td>
 <td>Re-estimate LGD on a later snapshot if one becomes available</td>
+</tr>
+<tr>
+<td>F10</td>
+<td>Medium</td>
+<td>Disparate impact untested: no protected attributes, names or full addresses, so no direct test or BISG proxy is possible</td>
+<td>Run a disparate-impact and less-discriminatory-alternative review on the deploying lender's data before use</td>
 </tr>
 </tbody>
 </table>
@@ -801,7 +1006,8 @@ distributional checks would not have flagged the problem in the meantime.</p>
 <li><strong>Selection.</strong> Only approved and funded loans are observed. The model has not been tested
   on applicants Lending Club declined.</li>
 <li><strong>No macro variables.</strong> The model is through-the-cycle by construction; the stress
-  scenario supplies the cycle.</li>
+  scenario supplies the cycle, and its severity depends on the anchor (Section 8).</li>
+<li><strong>Fair lending.</strong> Disparate impact could not be tested (Section 3.3).</li>
 </ul>
 <h2 id="appendix-a-scorecard-points">Appendix A. Scorecard points</h2>
 <p>The scorecard is 10 features and 92 bins. Score = sum of the points for each feature's bin;

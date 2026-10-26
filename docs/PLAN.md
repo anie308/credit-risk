@@ -112,3 +112,23 @@ validation-review style (`reports/model_doc/`), and a post on jurstadev.xyz.
       log (F1–F9), limitations, appendices
 - [x] Post for jurstadev.xyz (`jurstadev-portfolio/src/content/posts/credit-risk-model.md`, draft: true until reviewed); PDF copied to `public/writeups/lending-club-pd-model.pdf`
 - [x] `lcrisk reproduce` runs everything from the raw CSV (~6 min)
+
+## Review changes (2026-10-27)
+External review of the published post and doc raised five points; all addressed:
+- [x] Stress anchoring: crisis shift recomputed on four anchors (`el.crisis_shift_range`,
+      `reports/tables/stress_anchors.csv`). Sub-grade +0.18 → 2015 stressed EL 8.1%; FICO × DTI
+      +0.56 → 11.4%. LC graded crisis-era loans 1–6 notches harsher at fixed FICO, so the
+      sub-grade anchor understates. F8 raised to Medium; capital on the FICO × DTI anchor.
+      Anchor cells < 50 dev loans dropped (moved the sub-grade shift 0.19 → 0.18).
+- [x] "Crisis without a recession" reframed as Lending Club credit-supply / selection drift:
+      issuance $2.0bn → $6.4bn (2013 → 2015), full verification 41% → 28%, accounts opened up
+      while no-enquiry share rose 52% → 61% (stacking / soft-pull signal), DTI 16.8 → 18.5;
+      BLS unemployment 7.4% → 5.3%.
+- [x] Miscalibration size: observed ÷ predicted per grade with Jeffreys intervals
+      (`metrics.calibration_by_grade`); 2014 rejected grades 1.05–1.10, 2015 1.09–1.21.
+      Monitoring trigger now uses the ratio.
+- [x] Fairness: disparate impact untestable (no protected attributes, names or full address;
+      BISG impossible); stated in §3.3, limitations, new finding F10.
+- [x] Reason codes grouped into 8 families (`explain.FAMILIES`): top-reason agreement 29% → 75%;
+      93% within LightGBM's top 3.
+- [x] `scripts/check_numbers.py` extended to 193 checks; mutation-tested (4 planted errors caught).

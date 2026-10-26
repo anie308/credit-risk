@@ -76,6 +76,12 @@ def calibration_by_grade(y, p, grade) -> pd.DataFrame:
     t = df.groupby("grade", observed=True).agg(n=("y", "size"), defaults=("y", "sum"),
                                                pd_mean=("p", "mean"))
     t["odr"] = t["defaults"] / t["n"]
+    # Size of the miss, not just its significance: observed / predicted, with a 95% Jeffreys
+    # interval on the observed rate (with n in the tens of thousands the tests reject tiny gaps)
+    a, b = t["defaults"] + 0.5, t["n"] - t["defaults"] + 0.5
+    t["obs_pred"] = t["odr"] / t["pd_mean"]
+    t["obs_pred_lo"] = stats.beta.ppf(0.025, a, b) / t["pd_mean"]
+    t["obs_pred_hi"] = stats.beta.ppf(0.975, a, b) / t["pd_mean"]
     t["binomial_p"] = stats.binom.sf(t["defaults"] - 1, t["n"], t["pd_mean"])
     t["jeffreys_p"] = stats.beta.cdf(t["pd_mean"], t["defaults"] + 0.5,
                                      t["n"] - t["defaults"] + 0.5)

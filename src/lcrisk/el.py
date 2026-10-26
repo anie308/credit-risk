@@ -7,6 +7,7 @@ snapshot. They are then applied out of time.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from lcrisk import config, loss
@@ -43,22 +44,46 @@ def downturn_lgd_factor(pop: pd.DataFrame) -> float:
     return float(crisis["lgd"].iloc[0] / base["lgd"].iloc[0])
 
 
-def crisis_shift(pop: pd.DataFrame) -> dict:
+def _anchor_segments(pop: pd.DataFrame, dev: pd.DataFrame) -> pd.DataFrame:
+    """Segments a crisis-era loan can be matched on. FICO and DTI keep their meaning over
+    time; LC's grades were redefined as the platform grew."""
+    dti_edges = np.unique(np.nanquantile(dev["dti"], np.linspace(0, 1, 6)))
+    dti_edges[0], dti_edges[-1] = -np.inf, np.inf
+    fico_band = (pop["fico"] // 20 * 20).astype("Int64").astype("string")
+    return pd.DataFrame({
+        "sub_grade": pop["sub_grade"],
+        "grade": pop["grade"],
+        "fico_band": fico_band,
+        "fico_band_x_dti": fico_band + "|" + pd.cut(pop["dti"], dti_edges).astype("string"),
+    }, index=pop.index)
+
+
+def crisis_shift(pop: pd.DataFrame, anchor: str = "sub_grade") -> dict:
     """Log-odds shift that turns development-window default rates into crisis ones.
 
-    Each 2007-09 loan gets its LC sub-grade's development-window default rate as a PD; the
+    Each 2007-09 loan gets its segment's development-window default rate as a PD; the
     shift is what lifts the mean of those PDs to the crisis vintages' observed rate. Holding
-    sub-grade fixed strips out the mix change, leaving the downturn itself. LC re-calibrated
-    its grades over time, so treat this as an approximate severity.
+    the segment fixed strips out the mix change, leaving the downturn itself. The answer is
+    only as good as the assumption that a segment means the same thing in both periods, so
+    `crisis_shift_range` repeats it on anchors that don't depend on LC's grade definitions.
     """
     lo, hi = CRISIS_YEARS
-    dev = pop[pop["issue_d"].between(pd.Timestamp(config.DEV_START), pd.Timestamp(config.DEV_END))]
-    rate = dev.groupby("sub_grade")["bad"].mean()
-    crisis = pop[pop["vintage"].between(lo, hi)]
-    pd_ = crisis["sub_grade"].map(rate).dropna()
-    odr = crisis.loc[pd_.index, "bad"].mean()
-    return {"loans": len(pd_), "pd_at_dev_rates": float(pd_.mean()), "odr": float(odr),
+    dev_mask = pop["issue_d"].between(pd.Timestamp(config.DEV_START), pd.Timestamp(config.DEV_END))
+    seg = _anchor_segments(pop, pop[dev_mask])[anchor]
+    rate = pop.loc[dev_mask].groupby(seg[dev_mask])["bad"].agg(["mean", "size"])
+    rate = rate.loc[rate["size"] >= 50, "mean"]  # thin cells give noisy anchors
+    crisis_mask = pop["vintage"].between(lo, hi)
+    pd_ = seg[crisis_mask].map(rate).dropna().astype(float)
+    odr = pop.loc[pd_.index, "bad"].mean()
+    return {"anchor": anchor, "loans": len(pd_),
+            "coverage": len(pd_) / int(crisis_mask.sum()),
+            "pd_at_dev_rates": float(pd_.mean()), "odr": float(odr),
             "shift": loss.calibrate_shift(pd_.clip(1e-4, 0.9999), odr)}
+
+
+def crisis_shift_range(pop: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame([crisis_shift(pop, a)
+                         for a in ("sub_grade", "grade", "fico_band", "fico_band_x_dti")])
 
 
 def _apply(book: pd.DataFrame, params: pd.DataFrame, pd_: pd.Series,
@@ -120,6 +145,19 @@ def stress(scored: pd.DataFrame, params: pd.DataFrame, recal_shift: float, crisi
     return pd.DataFrame(rows)
 
 
+def stress_anchors(scored: pd.DataFrame, pop: pd.DataFrame, params: pd.DataFrame,
+                   recal_shift: float, lgd_factor: float) -> pd.DataFrame:
+    """The downturn calibrated on each anchor, and the 2015 lifetime EL rate it implies."""
+    t = crisis_shift_range(pop)
+    rows = []
+    for shift in t["shift"]:
+        s = stress(scored, params, recal_shift, {"shift": shift}, lgd_factor).set_index("scenario")
+        r = s.loc["downturn PD + LGD"]
+        rows.append({"mean_pd_stressed": r["mean_pd"], "lifetime_el": r["lifetime_el"],
+                     "el_rate_downturn_pd_lgd": r["el_rate"]})
+    return pd.concat([t, pd.DataFrame(rows)], axis=1)
+
+
 def run() -> dict[str, pd.DataFrame]:
     scored = load_scored()
     pop = pd.read_parquet(config.PROCESSED / "population.parquet")
@@ -135,6 +173,8 @@ def run() -> dict[str, pd.DataFrame]:
         "el_backtest": backtest(scored, pop, params, shifts),
         "stress": stress(scored, params["scorecard"], shifts["scorecard"], crisis, factor),
         "stress_calibration": pd.DataFrame([{**crisis, "downturn_lgd_factor": factor}]),
+        "stress_anchors": stress_anchors(scored, pop, params["scorecard"], shifts["scorecard"],
+                                         factor),
     }
     for name, t in out.items():
         t.to_csv(TABLES / f"{name}.csv", index=False)
