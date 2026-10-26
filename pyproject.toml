@@ -7,6 +7,7 @@ name = "lcrisk"
 version = "0.1.0"
 description = "A validated PD scorecard and LightGBM challenger on Lending Club loans, with expected loss and stress"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [{ name = "Jursta", email = "aobo443@gmail.com" }]
 dependencies = [

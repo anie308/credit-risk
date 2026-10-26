@@ -1,5 +1,8 @@
 # Lending Club PD Model
 
+[![ci](https://github.com/anie308/credit-risk/actions/workflows/ci.yml/badge.svg)](https://github.com/anie308/credit-risk/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 *A WoE/logistic scorecard, a LightGBM challenger, out-of-time validation, and expected loss under stress.*
 
 A retail probability-of-default model built and validated the way a bank's model risk team would
@@ -82,3 +85,7 @@ reports/        tables, figures, model documentation PDF
 ```
 
 See [docs/PLAN.md](docs/PLAN.md) for the phase checklist.
+
+## Licence
+
+Code: MIT (see [LICENSE](LICENSE)). The Lending Club data is not included; see `data/SOURCES.md`.
