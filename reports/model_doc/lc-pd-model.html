@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Retail Probability of Default Model: Development and Validation Report</title>
+<style>
+@page { size: A4; margin: 20mm 19mm 20mm 19mm; }
+html { font-family: "Georgia", "Times New Roman", serif; font-size: 10.2pt; line-height: 1.42;
+       color: #1a1a1a; }
+body { max-width: 172mm; margin: 0 auto; }
+header { text-align: center; margin-bottom: 1.2em; }
+header h1 { font-size: 17pt; line-height: 1.25; margin: 0 0 0.4em; font-weight: normal; }
+header .meta { font-size: 10pt; color: #444; }
+header .status { font-size: 8.5pt; color: #8a3b22; margin-top: 0.3em; }
+h2 { font-size: 12.5pt; margin: 1.3em 0 0.4em; break-after: avoid; }
+h3 { font-size: 11pt; font-style: italic; font-weight: normal; margin: 1em 0 0.3em;
+     break-after: avoid; }
+p { margin: 0 0 0.6em; text-align: justify; hyphens: auto; }
+h2#abstract + p { font-size: 9.8pt; }
+blockquote { margin: 0.5em 2em; font-style: italic; }
+figure { margin: 0.6em 0 0.8em; break-inside: avoid; text-align: center; }
+figure img { max-width: 74%; }
+p:has(> img) { text-align: center; margin: 0.6em 0 0.2em; break-inside: avoid;
+               break-after: avoid; }
+p > img { max-width: 80%; max-height: 92mm; }
+p:has(> img) + p > em:only-child { font-size: 8.8pt; color: #333; }
+figcaption { font-size: 8.8pt; color: #333; text-align: left; margin-top: 0.3em; }
+table { border-collapse: collapse; margin: 0.6em auto 1em; font-size: 9.5pt;
+        break-inside: avoid; }
+th, td { padding: 0.2em 0.8em; border-bottom: 1px solid #ccc; text-align: left; }
+th { border-bottom: 1.5px solid #333; font-weight: bold; }
+ul { margin: 0 0 0.6em; padding-left: 1.3em; }
+li { margin-bottom: 0.25em; }
+code { font-family: Consolas, monospace; font-size: 9pt; }
+.note { font-size: 8.8pt; color: #555; border-top: 1px solid #ccc; padding-top: 0.5em;
+        margin-top: 1.5em; }
+</style></head>
+<body>
+<header><h1>Retail Probability of Default Model: Development and Validation Report</h1>
+<div class="meta">Aniebietabasi Obo · October 2026</div>
+<div class="status">Model LC-PD-01, version 1.0. Self-review in the format of an independent validation; not independent.</div></header>
+<h2 id="document-control">Document control</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>LC-PD-01: lifetime probability of default, unsecured 36-month consumer instalment loans</td>
+</tr>
+<tr>
+<td>Model type</td>
+<td>Champion: WoE logistic scorecard. Challenger: gradient-boosted trees (LightGBM)</td>
+</tr>
+<tr>
+<td>Intended uses</td>
+<td>Application decisioning (cut-off), risk-based pricing input, expected loss, portfolio stress</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>Lending Club accepted loans 2007–2018Q4 (public), 36-month loans issued to Dec 2015</td>
+</tr>
+<tr>
+<td>Development sample</td>
+<td>Issued Oct 2012 – Dec 2013: 115,603 loans, 12.4% default rate</td>
+</tr>
+<tr>
+<td>Out-of-time samples</td>
+<td>2014 (162,570 loans) and 2015 (282,787 loans)</td>
+</tr>
+<tr>
+<td>Code</td>
+<td><code>credit-risk/</code> repository, package <code>lcrisk</code>; <code>lcrisk reproduce</code> rebuilds every number and figure here from the raw file</td>
+</tr>
+<tr>
+<td>Review status</td>
+<td>The author built and reviewed the model. This report follows the structure of an independent validation, but it is not independent, and a real deployment would need one.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>The scorecard ranks risk consistently in and out of time: its Gini is 0.310 on the hold-out
+test sample, 0.316 on 2014 loans and 0.330 on 2015 loans, with no decay. Ten features carry
+it, all with the expected sign, all significant, with variance inflation factors below 2. On
+the development window it is well calibrated (Hosmer–Lemeshow p = 0.65; no master-scale grade
+rejected).</p>
+<p>Out of time, calibration fails. Default rates rose inside every Lending Club grade after 2013,
+and the model under-predicts the 2015 vintage by two percentage points (mean PD 12.9%,
+observed 14.9%); the Jeffreys test rejects the PD of seven of eight grades. The population
+stability index never left green (score PSI ≤ 0.026 in every quarter), so <strong>standard
+population monitoring would not have caught this.</strong> The applicants looked the same on paper
+and defaulted more often. Recalibrating the intercept on 2014 outcomes, as an annual
+review would have done, closes only a third of the 2015 gap, because conditions kept
+deteriorating.</p>
+<p>The LightGBM challenger adds about four Gini points in every sample (0.352 / 0.354 / 0.363).
+At a 20% decline rate on the 2015 book that is 628 more defaults avoided, roughly $4 million
+of loss on $3.6 billion lent. Its top decline reason agrees with the scorecard's only 29% of
+the time.</p>
+<p><strong>Opinion: approve the scorecard as champion, with conditions.</strong> (1) Recalibrate before use
+and on monitoring triggers, not on a fixed annual cycle. (2) Add an early-delinquency
+backtest to monitoring, because the 36-month outcome arrives too late to steer by. (3) Keep
+LightGBM as a challenger and benchmark until a governed reason-code framework exists for it.
+The findings log is in Section 10.</p>
+<table>
+<thead>
+<tr>
+<th>Gini (95% bootstrap interval)</th>
+<th>Test (in time)</th>
+<th>Out of time 2014</th>
+<th>Out of time 2015</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scorecard (champion)</td>
+<td>0.310 (0.292–0.326)</td>
+<td>0.316 (0.308–0.324)</td>
+<td>0.330 (0.325–0.335)</td>
+</tr>
+<tr>
+<td>LightGBM (challenger)</td>
+<td>0.352 (0.338–0.369)</td>
+<td>0.354 (0.345–0.362)</td>
+<td>0.363 (0.359–0.368)</td>
+</tr>
+<tr>
+<td>Lending Club sub-grade (benchmark)</td>
+<td>0.277 (0.259–0.293)</td>
+<td>0.319 (0.312–0.326)</td>
+<td>0.357 (0.353–0.361)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-purpose-scope-and-use">2. Purpose, scope and use</h2>
+<p>The model estimates the probability that a new 36-month unsecured instalment loan to an
+individual borrower is charged off at any point in its life (lifetime PD). It is built from
+information available at application only: the credit-bureau record, stated income and
+employment, the loan request and the debt-to-income ratio.</p>
+<p><strong>In scope:</strong> individual applications for 36-month loans in the product and credit-policy
+range of the development data (FICO 660 and above, Lending Club's minimum).</p>
+<p><strong>Out of scope:</strong> 60-month loans (different default timing; excluded from development), joint
+applications (239 in the whole 2007–2015 population, too few to model), behavioural scoring of loans already on
+book, and IFRS 9 / CECL provisioning. That would need a term structure of PD and
+forward-looking adjustments. Section 7 gives an empirical 12-month PD for the Basel-style
+calculation only.</p>
+<h2 id="3-data">3. Data</h2>
+<h3 id="31-source-and-lineage">3.1 Source and lineage</h3>
+<p>The data are Lending Club's public loan-level files, 2007 to 2018Q4, as compiled on Kaggle
+(<code>wordsforthewise/lending-club</code>) and fetched from a CC0 mirror. The file is 1,675,133,810
+bytes (sha256 <code>3eae03c2…0933d1f36a</code>, recorded in <code>data/SOURCES.md</code>) and contains
+2,260,668 loans, which matches the published count. The raw file is never modified; <code>lcrisk
+ingest</code> derives everything from it.</p>
+<h3 id="32-population-and-target">3.2 Population and target</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Loans in</th>
+<th>Excluded</th>
+<th>Loans out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Valid loan id and issue date (drops summary lines)</td>
+<td>2,260,701</td>
+<td>33</td>
+<td>2,260,668</td>
+</tr>
+<tr>
+<td>36-month term</td>
+<td>2,260,668</td>
+<td>650,914</td>
+<td>1,609,754</td>
+</tr>
+<tr>
+<td>Issued on or before December 2015</td>
+<td>1,609,754</td>
+<td>988,585</td>
+<td>621,169</td>
+</tr>
+<tr>
+<td>Individual application</td>
+<td>621,169</td>
+<td>239</td>
+<td>620,930</td>
+</tr>
+<tr>
+<td>Final outcome observed (paid or charged off)</td>
+<td>620,930</td>
+<td>147</td>
+<td>620,783</td>
+</tr>
+</tbody>
+</table>
+<p>The issue-date cut makes every loan old enough to have run its full term before the data
+snapshot, so every outcome is final. Without it, recent vintages would be biased: their early
+defaults would be visible, but their full repayments would not yet be. Only 147 loans were
+still current or late at the snapshot, so the cut is clean.</p>
+<p><strong>Default (bad = 1):</strong> loan status <em>Charged Off</em>, <em>Default</em>, or the legacy <em>Does not meet the
+credit policy. Status: Charged Off</em>. <strong>Good (bad = 0):</strong> <em>Fully Paid</em> and its legacy
+equivalent. The population default rate is 13.94%.</p>
+<h3 id="33-features">3.3 Features</h3>
+<p>Features come from an explicit allowlist of fields known at application (<code>ingest.py</code>).
+Everything recorded after origination is excluded: payments, recoveries, the last FICO pull,
+hardship and settlement flags. Excluding by allowlist, not denylist, means a new post-origination
+field added to the source cannot leak in by accident. Three further groups are excluded on
+purpose:</p>
+<ul>
+<li><strong>Lending Club's grade, sub-grade and interest rate.</strong> These are the output of Lending
+  Club's own model. Using them would make ours a copy of theirs; instead they serve as a
+  benchmark (Section 6.4). For the same reason the instalment amount, which is computed from
+  the interest rate, is not used.</li>
+<li><strong>Geography</strong> (state, three-digit zip). Fair-lending law treats location as a potential
+  proxy for protected characteristics; it is left out rather than tested and defended.</li>
+<li><strong>Free text</strong> (job title, loan description). It would need its own review.</li>
+</ul>
+<p>Five features are derived: credit history length at application, employment length in years,
+the FICO band midpoint, and two affordability ratios, loan amount and revolving balance to
+annual income.</p>
+<h3 id="34-data-availability-and-the-development-window">3.4 Data availability and the development window</h3>
+<p>Lending Club added sixteen bureau fields (total credit limits, bankcard utilisation and
+headroom, mortgage accounts, recent account openings) part-way through 2012. They are absent
+before 2012Q3, 43% populated that quarter, and complete from 2012Q4. Developing on 2007–2013
+would have meant either dropping these fields or letting their missingness stand in for the
+issue date. The development window is therefore <strong>2012Q4–2013Q4</strong>, the period a lender
+would actually redevelop on. The earlier vintages are used only to calibrate the stress
+scenario (Section 8).</p>
+<p><img alt="Default rate by grade and vintage" src="figures/fig1_default_by_grade.png" /></p>
+<p><em>Figure 1. Observed default rate by Lending Club grade and issue year. From 2013 the default
+rate rises inside every grade, most steeply in the riskiest.</em></p>
+<h2 id="4-methodology">4. Methodology</h2>
+<h3 id="41-samples">4.1 Samples</h3>
+<p>The development window is split at random, stratified on the target, into training (70%,
+80,922 loans) and test (30%, 34,681 loans). The 2014 and 2015 vintages are out-of-time samples
+scored separately. Binning, feature selection, master-scale boundaries and challenger
+hyperparameters were all fixed before either out-of-time sample was scored.</p>
+<h3 id="42-champion-weight-of-evidence-logistic-scorecard">4.2 Champion: weight-of-evidence logistic scorecard</h3>
+<p><strong>Binning.</strong> Each numeric feature starts from up to ten quantile bins. Adjacent bins are merged
+until (a) every bin holds at least 5% of the training sample and (b) the default rate moves
+monotonically across bins. Monotonicity is imposed because a scorecard that rewards a
+higher debt-to-income ratio over some range is hard to defend to a credit committee, and the
+reversal is usually noise. Missing values form their own bin when they cover at least 0.5% of
+the sample, and otherwise score neutral (WoE = 0) rather than inherit a weight set by a
+handful of loans. Categories under 2% are pooled. WoE is ln(share of goods / share of bads),
+so positive WoE means lower risk.</p>
+<p><strong>Selection.</strong> Features need an information value of at least 0.02. Going down the IV ranking,
+a feature is dropped if its WoE correlates above 0.6 with one already kept. That leaves
+<code>avg_cur_bal</code>, <code>total_bc_limit</code> and <code>tot_cur_bal</code>, among others, behind <code>tot_hi_cred_lim</code> and
+<code>bc_open_to_buy</code>. A logistic regression is then fitted, and any feature with a wrong-signed
+(positive) coefficient or p &gt; 0.01 is removed one at a time until none remain. None were
+removed at this stage.</p>
+<p><strong>Scaling.</strong> Scores are set to 600 points at good:bad odds of 50:1, with 20 points to double
+the odds. The intercept is shared equally across features, so each bin carries a whole number
+of points and the points add up to the score (Appendix A).</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Coefficient</th>
+<th>Std. error</th>
+<th>IV</th>
+<th>VIF</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Intercept</td>
+<td>−1.959</td>
+<td>0.011</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>FICO (band midpoint)</td>
+<td>−0.539</td>
+<td>0.040</td>
+<td>0.124</td>
+<td>1.57</td>
+</tr>
+<tr>
+<td>Annual income</td>
+<td>−0.409</td>
+<td>0.046</td>
+<td>0.103</td>
+<td>1.84</td>
+</tr>
+<tr>
+<td>Total high credit limit</td>
+<td>−0.588</td>
+<td>0.053</td>
+<td>0.078</td>
+<td>1.68</td>
+</tr>
+<tr>
+<td>Bankcard open-to-buy</td>
+<td>−0.356</td>
+<td>0.057</td>
+<td>0.075</td>
+<td>1.92</td>
+</tr>
+<tr>
+<td>Debt-to-income</td>
+<td>−0.531</td>
+<td>0.054</td>
+<td>0.049</td>
+<td>1.23</td>
+</tr>
+<tr>
+<td>Loan to income</td>
+<td>−0.739</td>
+<td>0.057</td>
+<td>0.043</td>
+<td>1.24</td>
+</tr>
+<tr>
+<td>Accounts opened, past 24 months</td>
+<td>−0.971</td>
+<td>0.058</td>
+<td>0.042</td>
+<td>1.19</td>
+</tr>
+<tr>
+<td>% bankcards above 75% utilised</td>
+<td>−0.330</td>
+<td>0.072</td>
+<td>0.041</td>
+<td>1.78</td>
+</tr>
+<tr>
+<td>Months since most recent enquiry</td>
+<td>−0.943</td>
+<td>0.062</td>
+<td>0.033</td>
+<td>1.10</td>
+</tr>
+<tr>
+<td>Age of oldest revolving account</td>
+<td>−0.281</td>
+<td>0.064</td>
+<td>0.032</td>
+<td>1.15</td>
+</tr>
+</tbody>
+</table>
+<p>All coefficients are negative, as required under this WoE convention, and all have
+|z| &gt; 4. Every feature is a familiar credit-risk driver with an intuitive direction (Figure
+7): high FICO, income, credit limits and headroom lower risk; leverage, recent credit-seeking
+and thin or young files raise it. Two missing-value bins are economically meaningful and kept:
+no bankcard at all (<code>bc_open_to_buy</code> missing, 15.3% default rate) is high risk, and no
+enquiry on file (<code>mths_since_recent_inq</code> missing, 9.4%) is the lowest-risk group of that
+feature.</p>
+<p><img alt="WoE profiles" src="figures/fig7_woe_profiles.png" /></p>
+<p><em>Figure 7. Training default rate by bin for each scorecard feature, bins in increasing feature
+value; grey bars are missing-value bins.</em></p>
+<p><strong>Master scale.</strong> PDs map to eight rating grades with fixed lifetime-PD boundaries: R1 &lt; 4%,
+R2 4–6%, R3 6–8%, R4 8–11%, R5 11–15%, R6 15–20%, R7 20–27%, R8 ≥ 27%.</p>
+<h3 id="43-challenger-lightgbm">4.3 Challenger: LightGBM</h3>
+<p>The challenger uses all 40 allowlisted features in raw form, with categorical handling for
+home ownership, verification status and purpose. Seventeen features carry monotone
+constraints where the direction is not in doubt (FICO, debt-to-income, enquiries, utilisation,
+income, delinquencies and others; <code>challenger.MONOTONE</code>); a check confirms each constraint
+holds for every one of 2,000 sampled 2015 loans. Hyperparameters were chosen on a time-based hold-out inside
+the development window (train to 2013Q3, validate 2013Q4) from a seven-point grid. The grid
+was flat (hold-out Gini 0.350–0.354), so the choice is not fragile. The best setting, 15 leaves
+per tree and at least 1,000 loans per leaf, is also the most conservative; early stopping
+ended at 389 trees.</p>
+<h2 id="5-performance-on-the-development-window">5. Performance on the development window</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Gini train</th>
+<th>Gini test</th>
+<th>KS test</th>
+<th>Brier test</th>
+<th>Hosmer–Lemeshow p (test)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scorecard</td>
+<td>0.315</td>
+<td>0.310</td>
+<td>0.226</td>
+<td>0.1049</td>
+<td>0.65</td>
+</tr>
+<tr>
+<td>LightGBM</td>
+<td>0.431</td>
+<td>0.352</td>
+<td>0.251</td>
+<td>0.1037</td>
+<td>0.19</td>
+</tr>
+</tbody>
+</table>
+<p>The scorecard's train–test gap is half a Gini point. LightGBM's is eight: it fits the
+training sample closely. The test and out-of-time results below are the relevant measures,
+and they show no decay, so the gap is not a generalisation problem. It is still a reason to
+prefer the more conservative of the tuned settings when refitting. On the test sample, no
+master-scale grade is rejected by the binomial or Jeffreys test for either model.</p>
+<h2 id="6-validation-results">6. Validation results</h2>
+<h3 id="61-discrimination-over-time">6.1 Discrimination over time</h3>
+<p><img alt="ROC" src="figures/fig2_roc_oot.png" /></p>
+<p><em>Figure 2. ROC curves on the 2015 out-of-time sample.</em></p>
+<p>Neither model's ranking power decays out of time; it slightly improves (Figure 6), probably
+because the later vintages include more loans in the riskier grades, where separation is
+easier. Every out-of-time quarter's scorecard Gini sits within the development range
+(0.289–0.326) or above it. LightGBM's dips once, to 0.338 in 2014Q1, just below its
+development low of 0.342.</p>
+<p><img alt="Gini by quarter" src="figures/fig6_gini_by_quarter.png" /></p>
+<p><em>Figure 6. Gini by issue quarter. Development quarters show the test sample only.</em></p>
+<h3 id="62-calibration">6.2 Calibration</h3>
+<p><img alt="Reliability" src="figures/fig4_reliability.png" /></p>
+<p><em>Figure 4. Predicted PD against observed default rate in 20 equal-count bins.</em></p>
+<p>In time, both models sit on the diagonal. In 2015, both sit above it across the whole range:
+the shape of the curve is right but its level is wrong.</p>
+<table>
+<thead>
+<tr>
+<th>Sample</th>
+<th>Mean PD (scorecard)</th>
+<th>Observed</th>
+<th>HL p (scorecard)</th>
+<th>Grades rejected, Jeffreys 1%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Test</td>
+<td>12.4%</td>
+<td>12.4%</td>
+<td>0.65</td>
+<td>0 of 8</td>
+</tr>
+<tr>
+<td>Out of time 2014</td>
+<td>13.0%</td>
+<td>13.7%</td>
+<td>&lt; 0.001</td>
+<td>5 of 8</td>
+</tr>
+<tr>
+<td>Out of time 2015</td>
+<td>12.9%</td>
+<td>14.9%</td>
+<td>&lt; 0.001</td>
+<td>7 of 8</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Master scale" src="figures/fig5_master_scale.png" /></p>
+<p><em>Figure 5. Scorecard master scale on 2015 loans. Only R1 passes.</em></p>
+<h3 id="63-stability-and-what-it-missed">6.3 Stability, and what it missed</h3>
+<p><img alt="Drift and PSI" src="figures/fig3_drift_psi.png" /></p>
+<p><em>Figure 3. Mean predicted PD against observed default rate by issue quarter (top), and the
+score's population stability index against the training sample (bottom).</em></p>
+<p>The score PSI peaks at 0.026 (2014Q4), far below the 0.10 amber threshold. Feature-level
+stability (CSI) is green for every feature except verification status (0.17 in 2014, 0.23 in
+2015, amber), which reflects a change in Lending Club's income-verification practice. That
+feature is not in the scorecard (IV 0.003), and it contributes 1.8% of LightGBM's
+explanatory weight.</p>
+<p>This is the central validation finding. The distribution of applicants barely moved, but the
+default rate given those characteristics did. That kind of drift is invisible to PSI by
+construction. Plausible causes are a looser macro-credit environment and adverse selection
+as competition for prime borrowers grew. Neither is observable in the application data.
+Monitoring that relies on PSI would have reported a healthy model throughout 2014–2015.</p>
+<h3 id="64-benchmarking-against-lending-clubs-own-grade">6.4 Benchmarking against Lending Club's own grade</h3>
+<p>Lending Club's sub-grade is a natural benchmark: it is the lender's own risk ranking, built
+with information this model does not have (the full bureau report, internal fraud and
+verification checks). On the development window it ranks worse than the scorecard (Gini 0.277
+vs 0.310). It improves steadily after that and by 2015 matches LightGBM (0.357). Lending
+Club rebuilt its model on growing data during this period. A model frozen at 2013 falls
+behind one that keeps learning, which is a further argument for a defined redevelopment cycle.</p>
+<h3 id="65-recalibration-test">6.5 Recalibration test</h3>
+<p>An intercept-only recalibration is the standard remedy when ranking holds and level drifts.
+To test it fairly, the shift is fitted on the most recent fully observed year (2014) and
+applied to the next (2015), as a bank would at an annual review.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Mean PD before → after</th>
+<th>Observed 2015</th>
+<th>HL statistic before → after</th>
+<th>Grades rejected after</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scorecard (+0.068 log-odds)</td>
+<td>12.9% → 13.6%</td>
+<td>14.9%</td>
+<td>1,114 → 448</td>
+<td>6 of 8</td>
+</tr>
+<tr>
+<td>LightGBM (+0.043 log-odds)</td>
+<td>13.3% → 13.8%</td>
+<td>14.9%</td>
+<td>763 → 423</td>
+<td>6 of 8</td>
+</tr>
+</tbody>
+</table>
+<p>The recalibration helps but lags: 2015 was worse than 2014. A one-year-old recalibration is
+not enough when conditions are moving, so the monitoring plan (Section 9) uses triggers.</p>
+<h3 id="66-champion-versus-challenger">6.6 Champion versus challenger</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Scorecard</th>
+<th>LightGBM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gini, out of time 2015</td>
+<td>0.330</td>
+<td>0.363</td>
+</tr>
+<tr>
+<td>Bad rate of approved loans at 20% decline rate (2015)</td>
+<td>12.04%</td>
+<td>11.76%</td>
+</tr>
+<tr>
+<td>Defaults avoided at 20% decline rate (2015)</td>
+<td>14,852</td>
+<td>15,480 (+628)</td>
+</tr>
+<tr>
+<td>Features</td>
+<td>10</td>
+<td>40</td>
+</tr>
+<tr>
+<td>Explanation</td>
+<td>Points table; exact</td>
+<td>TreeSHAP; per loan</td>
+</tr>
+<tr>
+<td>Same top decline reason as scorecard</td>
+<td></td>
+<td>29% (76% within its top three)</td>
+</tr>
+</tbody>
+</table>
+<p>At the average realised loss per 2015 default (about $6,500), LightGBM's extra 628 avoided
+defaults are worth about $4.1 million, 0.11% of the $3.6 billion lent. That is material. Against
+it, LightGBM's top decline reason is a feature the scorecard does not use 15% of the time,
+which would need a new adverse-action reason framework. It also spreads weight across many
+correlated bureau fields (Appendix B), so any single explanation is less stable. The
+recommendation is to keep the scorecard as champion and run LightGBM alongside it as a
+challenger and early-warning benchmark. If the gap persists over two further vintages and a
+reason-code framework is approved, LightGBM should be promoted.</p>
+<h2 id="7-risk-parameters-and-expected-loss">7. Risk parameters and expected loss</h2>
+<p>Expected loss is PD × LGD × EAD per loan. LGD, EAD and default timing are estimated per
+master-scale grade on development-window defaults, whose recovery workouts were complete
+by the data snapshot.</p>
+<ul>
+<li><strong>EAD at default</strong> = amount funded − principal repaid. It is 50% of the amount funded in R1
+  rising to 64% in R8, because riskier loans default earlier in their amortisation.</li>
+<li><strong>LGD</strong> = 1 − (recoveries − collection fees) / EAD, exposure-weighted: 0.87–0.90 by grade.
+  That is typical for unsecured consumer debt sold to collection buyers. Defaults that ended
+  in a debt settlement (11%) lose less, about 0.70.</li>
+<li><strong>12-month share.</strong> Of lifetime defaults, 24% (R1) to 41% (R8) miss their first payment
+  within 12 months of issue. This gives an empirical one-year PD for the capital calculation.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Lifetime EL backtest</th>
+<th>Predicted EL</th>
+<th>Realised loss</th>
+<th>Predicted ÷ realised</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2014, scorecard</td>
+<td>$126.8m (6.20%)</td>
+<td>$136.9m (6.69%)</td>
+<td>0.93</td>
+</tr>
+<tr>
+<td>2014, scorecard recalibrated</td>
+<td>$135.1m (6.60%)</td>
+<td></td>
+<td>0.99</td>
+</tr>
+<tr>
+<td>2015, scorecard</td>
+<td>$223.0m (6.16%)</td>
+<td>$273.8m (7.56%)</td>
+<td>0.81</td>
+</tr>
+<tr>
+<td>2015, scorecard recalibrated</td>
+<td>$237.5m (6.56%)</td>
+<td></td>
+<td>0.87</td>
+</tr>
+</tbody>
+</table>
+<p>The EL shortfall in 2015 follows from the PD shortfall: the LGD and EAD parameters
+themselves held up. One caution runs the other way: recoveries on late 2015 defaults may not
+have been fully booked at the snapshot, which would overstate realised loss slightly.</p>
+<h2 id="8-stress-testing-and-capital">8. Stress testing and capital</h2>
+<p><strong>Downturn calibration.</strong> Each 2007–2009 loan is given its sub-grade's development-window
+default rate as a PD. Those PDs average 14.2%; the crisis vintages actually defaulted at 16.5%
+(8,235 loans). Holding the sub-grade fixed removes the change in borrower mix and leaves the
+downturn itself, a shift of <strong>+0.19 on the log-odds scale</strong>. Crisis-vintage LGD was 5.4%
+higher than in the development window, which gives the downturn LGD factor. This is an
+approximate severity: Lending Club re-calibrated its grades over the period.</p>
+<table>
+<thead>
+<tr>
+<th>Scenario, 2015 book ($3.62bn funded)</th>
+<th>Mean PD</th>
+<th>Mean LGD</th>
+<th>Lifetime EL</th>
+<th>EL rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline (recalibrated PD)</td>
+<td>13.6%</td>
+<td>0.885</td>
+<td>$237.5m</td>
+<td>6.56%</td>
+</tr>
+<tr>
+<td>Downturn PD</td>
+<td>15.9%</td>
+<td>0.886</td>
+<td>$282.3m</td>
+<td>7.80%</td>
+</tr>
+<tr>
+<td>Downturn PD and LGD</td>
+<td>15.9%</td>
+<td>0.934</td>
+<td>$297.4m</td>
+<td>8.21%</td>
+</tr>
+<tr>
+<td><em>Realised</em></td>
+<td><em>14.9%</em></td>
+<td></td>
+<td><em>$273.8m</em></td>
+<td><em>7.56%</em></td>
+</tr>
+</tbody>
+</table>
+<p>The realised 2015 loss rate lies between the baseline and the downturn scenarios. In loss
+terms, the 2015 vintage experienced most of a crisis-calibrated stress, in a year without a
+recession. That is the clearest sign of how far underwriting conditions moved.</p>
+<p><strong>Capital.</strong> Basel's single-factor (Vasicek) formula for other retail exposures is applied to
+the one-year PD, with the regulatory asset correlation (3–16%) and downturn LGD. Unexpected
+loss at 99.9% is $373.5m, <strong>10.3% of the amount funded</strong>, on top of one-year expected loss of
+$135.3m. At 99% it is 6.4%. These are illustrative: there is no maturity adjustment, and
+EAD is taken at origination.</p>
+<h2 id="9-monitoring-plan">9. Monitoring plan</h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Frequency</th>
+<th>Amber</th>
+<th>Red</th>
+<th>Action on red</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score PSI vs development</td>
+<td>Monthly</td>
+<td>≥ 0.10</td>
+<td>≥ 0.25</td>
+<td>Investigate; review cut-off</td>
+</tr>
+<tr>
+<td>Feature CSI</td>
+<td>Monthly</td>
+<td>≥ 0.10</td>
+<td>≥ 0.25</td>
+<td>Investigate source change</td>
+</tr>
+<tr>
+<td>30+ days past due at 6 months on book, predicted vs observed</td>
+<td>Monthly, by vintage</td>
+<td>Ratio &gt; 1.10</td>
+<td>&gt; 1.20</td>
+<td>Recalibrate intercept</td>
+</tr>
+<tr>
+<td>Mean PD vs observed default rate, matured cohorts</td>
+<td>Quarterly</td>
+<td>Jeffreys rejects ≥ 2 grades</td>
+<td>≥ 4 grades</td>
+<td>Recalibrate; escalate</td>
+</tr>
+<tr>
+<td>Gini on matured cohorts</td>
+<td>Quarterly</td>
+<td>&lt; 0.28</td>
+<td>&lt; 0.25</td>
+<td>Redevelopment review</td>
+</tr>
+<tr>
+<td>Challenger Gini gap</td>
+<td>Quarterly</td>
+<td>&gt; 0.04 for 2 quarters</td>
+<td></td>
+<td>Champion/challenger review</td>
+</tr>
+</tbody>
+</table>
+<p>The early-delinquency backtest is the key addition. The full 36-month outcome for a
+vintage is known only three years after the loans are made. Section 6.3 shows that the
+distributional checks would not have flagged the problem in the meantime.</p>
+<h2 id="10-findings-log">10. Findings log</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Severity</th>
+<th>Finding</th>
+<th>Required action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F1</td>
+<td>High</td>
+<td>PD under-predicts out of time: 2015 mean PD 12.9% vs 14.9% observed; Jeffreys rejects 7 of 8 grades</td>
+<td>Recalibrate before use; adopt the trigger-based recalibration in Section 9</td>
+</tr>
+<tr>
+<td>F2</td>
+<td>High</td>
+<td>Population stability metrics stayed green throughout the drift (score PSI ≤ 0.026)</td>
+<td>Add the early-delinquency backtest to monitoring; do not rely on PSI alone</td>
+</tr>
+<tr>
+<td>F3</td>
+<td>Medium</td>
+<td>Annual recalibration lags a deteriorating environment (6 of 8 grades still rejected after the 2014-based fix)</td>
+<td>Recalibrate on triggers, not a calendar</td>
+</tr>
+<tr>
+<td>F4</td>
+<td>Medium</td>
+<td>Development data are approved loans only; no reject inference</td>
+<td>Treat PDs for applicant profiles outside the approved range as unvalidated; consider reject inference at redevelopment</td>
+</tr>
+<tr>
+<td>F5</td>
+<td>Medium</td>
+<td>Challenger outperforms by about 4 Gini points but its decline reasons differ from the champion's</td>
+<td>Build and approve a SHAP-based reason-code framework before any promotion</td>
+</tr>
+<tr>
+<td>F6</td>
+<td>Low</td>
+<td>LightGBM in-sample Gini 0.43 vs 0.35 on test</td>
+<td>Prefer stronger regularisation at refit; no decay seen out of time</td>
+</tr>
+<tr>
+<td>F7</td>
+<td>Low</td>
+<td>Verification status CSI amber (0.23 in 2015)</td>
+<td>Not in the champion; monitor its use in the challenger</td>
+</tr>
+<tr>
+<td>F8</td>
+<td>Low</td>
+<td>Downturn severity is calibrated through Lending Club sub-grades, which were redefined over time</td>
+<td>Cross-check against an external macro scenario at the next review</td>
+</tr>
+<tr>
+<td>F9</td>
+<td>Low</td>
+<td>Recoveries on late 2015 defaults may be incomplete at the data snapshot</td>
+<td>Re-estimate LGD on a later snapshot if one becomes available</td>
+</tr>
+</tbody>
+</table>
+<h2 id="11-limitations-and-assumptions">11. Limitations and assumptions</h2>
+<ul>
+<li><strong>Public data, single lender.</strong> Lending Club's applicants, policy and pricing are not a
+  bank's. The method transfers; the parameters do not.</li>
+<li><strong>Lifetime target.</strong> The PD is a 36-month lifetime PD. The 12-month PD used for capital
+  comes from the observed timing of defaults by grade, assuming that timing is stable.</li>
+<li><strong>Selection.</strong> Only approved and funded loans are observed. The model has not been tested
+  on applicants Lending Club declined.</li>
+<li><strong>No macro variables.</strong> The model is through-the-cycle by construction; the stress
+  scenario supplies the cycle.</li>
+</ul>
+<h2 id="appendix-a-scorecard-points">Appendix A. Scorecard points</h2>
+<p>The scorecard is 10 features and 92 bins. Score = sum of the points for each feature's bin;
+600 = 50:1 good:bad odds; +20 points doubles the odds. The full table is in
+<code>reports/tables/scorecard_points.csv</code>. Selected rows:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Bin</th>
+<th>Training loans</th>
+<th>Default rate</th>
+<th>Points</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FICO</td>
+<td>≤ 662</td>
+<td>5,789</td>
+<td>17.1%</td>
+<td>48</td>
+</tr>
+<tr>
+<td>FICO</td>
+<td>697–707</td>
+<td>9,460</td>
+<td>10.5%</td>
+<td>57</td>
+</tr>
+<tr>
+<td>FICO</td>
+<td>&gt; 737</td>
+<td>6,974</td>
+<td>5.2%</td>
+<td>69</td>
+</tr>
+<tr>
+<td>Accounts opened, past 24 months</td>
+<td>0</td>
+<td>4,692</td>
+<td>9.1%</td>
+<td>64</td>
+</tr>
+<tr>
+<td>Accounts opened, past 24 months</td>
+<td>&gt; 7</td>
+<td>7,313</td>
+<td>16.8%</td>
+<td>44</td>
+</tr>
+<tr>
+<td>Months since most recent enquiry</td>
+<td>≤ 1</td>
+<td>13,459</td>
+<td>16.0%</td>
+<td>46</td>
+</tr>
+<tr>
+<td>Months since most recent enquiry</td>
+<td>none on file</td>
+<td>9,209</td>
+<td>9.4%</td>
+<td>63</td>
+</tr>
+<tr>
+<td>Loan to income</td>
+<td>≤ 0.109</td>
+<td>16,216</td>
+<td>10.1%</td>
+<td>59</td>
+</tr>
+<tr>
+<td>Loan to income</td>
+<td>&gt; 0.341</td>
+<td>8,058</td>
+<td>16.6%</td>
+<td>47</td>
+</tr>
+</tbody>
+</table>
+<h2 id="appendix-b-feature-importance-both-models">Appendix B. Feature importance, both models</h2>
+<p>Share of mean absolute contribution to the log-odds on 20,000 loans from 2015. The full
+table is in <code>reports/tables/importance.csv</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Scorecard</th>
+<th>LightGBM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FICO</td>
+<td>14.9%</td>
+<td>10.5%</td>
+</tr>
+<tr>
+<td>Annual income</td>
+<td>9.8%</td>
+<td>8.8%</td>
+</tr>
+<tr>
+<td>Accounts opened, past 24 months</td>
+<td>14.8%</td>
+<td>6.8%</td>
+</tr>
+<tr>
+<td>Loan to income</td>
+<td>11.3%</td>
+<td>5.9%</td>
+</tr>
+<tr>
+<td>Debt-to-income</td>
+<td>9.2%</td>
+<td>5.8%</td>
+</tr>
+<tr>
+<td>Accounts opened, past 12 months</td>
+<td>—</td>
+<td>4.9%</td>
+</tr>
+<tr>
+<td>Loan purpose</td>
+<td>—</td>
+<td>4.8%</td>
+</tr>
+<tr>
+<td>Months since most recent enquiry</td>
+<td>12.1%</td>
+<td>4.7%</td>
+</tr>
+<tr>
+<td>Total high credit limit</td>
+<td>11.5%</td>
+<td>3.1%</td>
+</tr>
+<tr>
+<td>31 other features (LightGBM) / 3 other features (scorecard)</td>
+<td>16.4%</td>
+<td>44.7%</td>
+</tr>
+</tbody>
+</table>
+</body></html>
